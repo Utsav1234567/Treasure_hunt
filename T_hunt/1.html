@@ -1,0 +1,1437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Treasure Hunt — Powers + Predator/Prey (inline)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root { --cols:10; --rows:5; --gap:4px; --cell:110px; --radius:12px;
+          --front-bg:#0f172a; --front-fg:#e5e7eb; --accent:#60a5fa;
+          --ui-bg:#0b1020; --ui-fg:#ffffff;
+          --pp-btn-w: 120px; --pp-btn-fs: 0.9rem; --pp-btn-lh: 1.2; --pp-btn-pad: 3px 8px; }
+  *{box-sizing:border-box}
+  body{ margin:0;background:var(--ui-bg);color:var(--ui-fg);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    min-height:100svh;display:grid;place-items:center;padding:24px;overflow-x:hidden }
+  .wrap{width:min(100%,1200px)}
+  h1{margin:0 0 14px;font-size:clamp(1.05rem,1.2vw+1rem,1.6rem)}
+  .topbar{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  .top-right{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .toolbar{display:flex;gap:10px;margin:10px 0 16px;flex-wrap:wrap}
+  .btn{background:#1f2937;color:#e5e7eb;padding:8px 12px;border-radius:10px;
+       border:1px solid rgba(255,255,255,.12);font-weight:600;cursor:pointer;transition:filter .2s ease}
+  .btn:hover{filter:brightness(1.1)}
+  .btn.small{padding:6px 10px;border-radius:8px}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+
+  /* Board + overlay */
+  .board{position:relative;display:grid;grid-template-columns:repeat(var(--cols),1fr);
+    row-gap:1.9px;column-gap:1.9px;background-size:70%;background-position:center;background-repeat:no-repeat;
+    padding:0;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+  .tile{position:relative;height:var(--cell);border-radius:var(--radius);border:none;background:var(--front-bg);
+    color:var(--front-fg);font-weight:800;font-size:2.05rem;display:grid;place-items:center;cursor:pointer;
+    transition:transform .25s ease,background .25s ease,color .25s ease,box-shadow .25s ease, opacity .25s ease;
+    padding:6px;text-align:center;background-size:cover;background-position:center}
+  .tile.revealed{transform:scale(.97);background-image:none}
+  .tile.cleared{background:transparent!important;box-shadow:none!important;cursor:default;opacity:.1}
+  .tile.cleared .num{display:none}
+  .tile .num{pointer-events:none; padding:2px 6px; letter-spacing:0.5px;}
+  .backdrop-overlay{position:absolute; inset:0;background-position:center;background-repeat:no-repeat;background-size:70%;
+    border-radius:14px;opacity:0; transition:opacity .25s ease; pointer-events:none; z-index:5}
+  .board.overlay-on .backdrop-overlay{ opacity:1; }
+
+  /* Themes */
+  .theme-funny{background:#ffe8ff;color:#111}
+  .theme-risky{background:#4b5563;color:#fff}
+  .theme-fortune{background:#16a34a;color:#fff}
+  .theme-clue{background:#0ea5e9;color:#fff}
+  .theme-trap{background:#dc2626;color:#fff}
+  .theme-treasure{background:#0f172a;color:#facc15}
+  .theme-empty{background:#fff;color:#0f172a}
+  .theme-coin{background:#fde68a;color:#92400e}
+
+  .content{font-size:1.05rem;line-height:1.35}
+  .drawer{display:flex;flex-direction:column;gap:6px;align-items:center}
+  .pill-draw{padding:7px 12px;border:none;border-radius:10px;font-weight:700;cursor:pointer;color:#fff;
+    box-shadow:0 3px 6px rgba(0,0,0,0.2);transition:all .2s ease;}
+  .pill-draw:hover{transform:translateY(-2px);box-shadow:0 5px 10px rgba(0,0,0,0.25);}
+  .pill-funny{background:#fff;color:#000;border:1px solid rgba(0,0,0,.15);}
+  .pill-fortune{background:#16a34a;}
+  .pill-risky{background:#4b5563;}
+  .pill-clue{background:#0ea5e9;}
+
+  /* Modal */
+  .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:20px;z-index:999;background:rgba(0,0,0,.55)}
+  .modal.open{display:flex}
+  .card{position:relative;width:min(960px,96vw);border-radius:16px;padding:15px;color:#fff;text-align:left;background:linear-gradient(to bottom,#fff,#f3f4f6);color:#111827}
+  .card.narrow{width:min(480px,92vw);} /* slightly narrower */
+  .card.setup{width:min(560px,92vw);}  /* setup a little wider to fit new fields */
+  .card.scrollable{max-height:72vh;overflow:auto;}
+  .card.landscape{width:min(1100px,98vw);}
+  .card h2{margin:0 0 10px;font-size:1.1rem}
+  .card.bigtitle h2{font-size:2.2rem}
+  .actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;justify-content:flex-end}
+  .pill-close-black{padding:7px 11px;border-radius:999px;border:1px solid #000;background:#000;color:#fff;cursor:pointer}
+  .pill-close-black:hover{filter:brightness(1.1)}
+  .funny-bg{background:conic-gradient(from 0deg at 50% 50%, #ff0066, #ffcc00, #33cc33, #0099ff, #6633ff, #ff0066);--glow:rgba(255,204,0,.45);color:#fff}
+  .risky-bg{background:linear-gradient(to bottom,#4b5563,#1f2937);--glow:rgba(75,85,99,.45);color:#fff}
+  .fortune-bg{background:linear-gradient(to bottom,#16a34a,#15803d);--glow:rgba(22,163,74,.45);color:#fff}
+  .clue-bg{background:linear-gradient(to bottom,#06b6d4,#0ea5e9);--glow:rgba(14,165,233,.45);color:#fff}
+  .trap-bg{background:linear-gradient(to bottom,#dc2626,#7f1d1d);--glow:rgba(220,38,38,.45);color:#fff}
+  .light-bg{background:linear-gradient(to bottom,#fff,#f3f4f6);color:#111827;--glow:rgba(255,255,255,.45)}
+  .gold-bg{background:linear-gradient(to bottom,#fdf6b2,#facc15);color:#111827;--glow:rgba(250,204,21,.4)}
+  .card.glow{animation:popupGlow 2.2s ease-in-out infinite;box-shadow:0 0 16px 4px var(--glow)}
+  @keyframes popupGlow{0%{box-shadow:0 0 16px 4px var(--glow)}50%{box-shadow:0 0 28px 10px var(--glow)}100%{box-shadow:0 0 16px 4px var(--glow)}}
+  .card::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 120px rgba(0,0,0,.2),inset 0 0 40px rgba(0,0,0,.2)}
+
+  .card.tinted{ --tint: #3b82f6;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 78%, #000) 0%, #0b0f1a 100%);
+    color:#fff; --glow: color-mix(in srgb, var(--tint) 30%, #000);
+  }
+  .card.reveal-anim{ animation: popIn .55s ease-out, popupGlow 2.4s ease-in-out 3; }
+  @keyframes popIn{ 0% { transform: translateY(8px) scale(0.97); opacity:0; } 60% { transform: translateY(-3px) scale(1.02); opacity:1; } 100% { transform: translateY(0) scale(1); } }
+
+  #fireworks{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:1000}
+
+  /* Players */
+  .players{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .player{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;background:#0f172a;
+    border:1px solid rgba(255,255,255,.08); transition:filter .2s ease, box-shadow .2s ease; cursor:pointer;}
+  .player:hover{background:#fff;color:#000;}
+  .player.current{outline:2px solid var(--accent);box-shadow:0 0 0 6px rgba(96,165,250,.15)}
+  .player.blocked{opacity:.45;filter:grayscale(.3)}
+  .dot{width:12px;height:12px;border-radius:50%}
+  .accentBorder{box-shadow:0 0 0 3px var(--accent)}
+  .badges{margin-left:2px;font-size:14px;opacity:.9}
+
+  /* Characters-of-play strip */
+  .reveal-wrap{ display:flex; gap:16px; overflow-x:auto; padding:4px; }
+  .reveal-wrap::-webkit-scrollbar{height:10px}
+  .reveal-portrait{ flex:0 0 28%; height:28vh; width:auto; border-radius:14px; object-fit:cover; border:2px solid rgba(255,255,255,.2);}
+  @media (max-width:900px){ .reveal-portrait{ flex-basis:46%; } }
+  @media (max-width:700px){ .reveal-portrait{ flex-basis:70%; } }
+
+  /* Player popup layout */
+  .two-col{display:grid;grid-template-columns:220px 1fr;gap:14px;align-items:start}
+  .big-portrait{width:100%;height:280px;object-fit:cover;border-radius:12px;border:2px solid rgba(255,255,255,.2)}
+  .char-blurb{ margin-top:10px; border-radius:10px; padding:10px; font-size:.92rem; line-height:1.25;
+    background: color-mix(in srgb, var(--tint, #60a5fa) 25%, #0b0f1a);
+    border: 1px solid color-mix(in srgb, var(--tint, #60a5fa) 50%, #000); color:#fff;
+    box-shadow: 0 0 6px color-mix(in srgb, var(--tint, #60a5fa) 30%, transparent); }
+  .coins-line{ align-self:start; margin-top:6px; }
+  .wide{grid-column:1 / -1;} /* make elements span the full table width */
+
+  /* Powers table */
+  .ppPowersWrap{ margin-top:0; padding:12px 6px; background: color-mix(in srgb, var(--tint) 25%, #0b0f1a);
+    border:1px solid color-mix(in srgb, var(--tint) 50%, #000); border-radius:8px; }
+  .ppPowersTable{ width:100%; border-collapse:collapse; margin:0; font-size:.85rem; line-height:1.1; color:#fff; }
+  .ppPowersTable thead th{ text-align:center !important; font-weight:700; padding:3px 4px;
+    border-bottom:2px solid color-mix(in srgb, var(--tint) 60%, #fff); }
+  .ppPowersTable td{ padding:5px; vertical-align:top;
+    border-bottom:1px solid color-mix(in srgb, var(--tint) 35%, #fff); }
+  .ppPowersTable tr:last-child td{ border-bottom:none; }
+  .ppPowersTable td:nth-child(2), .ppPowersTable th:nth-child(2){ width:70px; text-align:center; }
+  #popupCard .btn.small, .ppPowersTable .btn.small{
+    display:inline-block; width:var(--pp-btn-w); font-size:var(--pp-btn-fs); line-height:var(--pp-btn-lh); padding:var(--pp-btn-pad);
+    height:auto; white-space:normal; word-break:break-word; text-align:center; font-weight:600;
+    background: color-mix(in srgb, var(--tint, #60a5fa) 55%, #000);
+    border:1px solid color-mix(in srgb, var(--tint, #60a5fa) 70%, #fff); color:#fff; border-radius:6px;
+    transition: filter .2s ease, transform .1s ease;}
+  #popupCard .btn.small:hover:not([disabled]), .ppPowersTable .btn.small:hover:not([disabled]){ filter:brightness(1.15); transform:translateY(-1px); }
+
+  /* Visual effects for Shield & Standby */
+  .btn.shield-glow { animation: popupGlow 1s ease-in-out infinite; --glow: rgba(96,165,250,0.9); box-shadow: 0 0 6px 1px var(--glow); }
+  .btn.standby-glow{ animation: popupGlow 1s ease-in-out infinite; --glow: rgba(245,158,11,0.9); box-shadow: 0 0 6px 1px var(--glow); }
+  @keyframes popupGlow { 0%,100%{box-shadow:0 0 4px 1px var(--glow),0 0 6px 2px var(--glow);} 50%{box-shadow:0 0 8px 2px var(--glow),0 0 10px 3px var(--glow);} }
+
+  /* Notifications bar */
+  .notify-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;
+    background:#111827;border:1px solid rgba(255,255,255,.15);color:#fff;padding:10px 14px;border-radius:999px;
+    font-weight:700;opacity:0;pointer-events:none;transition:opacity .2s ease; z-index:1200}
+  .notify-bar.show{opacity:1}
+
+</style>
+</head>
+<body>
+<canvas id="fireworks"></canvas>
+<div id="winnerBanner" style="display:none"></div>
+
+<div class="wrap">
+  <div class="topbar">
+    <h1>🪙💰💎 Treasure Hunt</h1>
+    <div class="top-right">
+      <button class="btn" id="hostBtn">Host</button>
+      <div class="players" id="playersBar"></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn" id="setupPlayers">Setup Players</button>
+    <button class="btn" id="nextTurn">Next ▶</button>
+    <button class="btn" id="skipTurn">Skip (+2)</button>
+    <button class="btn" id="revealAll">Reveal All</button>
+    <button class="btn" id="hideAll">Hide All</button>
+    <button class="btn" id="reshuffleBehind">Reshuffle Behind</button>
+    <button class="btn" id="showPictur">Show picture</button>
+    <button class="btn" id="newPicture">New picture</button>
+    <button class="btn" id="zoomIn">Zoom In</button>
+    <button class="btn" id="zoomOut">Zoom Out</button>
+    <button class="btn" id="toggleInfo">Info: Off</button>
+    <button class="btn" id="toggleNotify">Notifications: Off</button>
+  </div>
+
+  <div class="board" id="board"></div>
+</div>
+
+<div class="notify-bar" id="notifyBar"></div>
+
+<!-- Generic popup -->
+<div class="modal" id="popup">
+  <div class="card light-bg" id="popupCard">
+    <h2 id="popupTitle">Card</h2>
+    <div class="task" id="popupText"></div>
+    <div class="actions" id="popupActions"></div>
+  </div>
+</div>
+
+<!-- Player setup -->
+<div class="modal" id="setupModal">
+  <div class="card light-bg setup" id="setupCard">
+    <h2>Game Setup</h2>
+    <div class="task">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label style="display:flex;align-items:center;gap:8px">
+          <strong>Players:</strong>
+          <input id="playerCount" type="number" min="1" max="8" value="2" style="width:90px;padding:6px;border-radius:8px;border:1px solid rgba(0,0,0,.25);background:#fff;color:#111">
+        </label>
+        <label style="display:flex;align-items:center;gap:8px">
+          <strong>Starting coins:</strong>
+          <input id="startingCoins" type="number" min="0" max="99" value="0" style="width:90px;padding:6px;border-radius:8px;border:1px solid rgba(0,0,0,.25);background:#fff;color:#111">
+        </label>
+        <label style="display:flex;align-items:center;gap:8px">
+          <strong>Tiles:</strong>
+          <input id="setupTiles" type="number" min="50" max="100" step="10" value="50" style="width:100px;padding:6px;border-radius:8px;border:1px solid rgba(0,0,0,.25);background:#fff;color:#111">
+        </label>
+      </div>
+      <div id="playersForm" class="setup-grid" style="margin-top:12px"></div>
+    </div>
+    <div class="setup-actions">
+      <button class="pill-close-black" id="cancelSetup">Close</button>
+      <button class="btn small" id="savePlayers">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= Utils ================= */
+function pick(a){return a[Math.floor(Math.random()*a.length)];}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a;}
+function isPrime(n){if(n<2)return false;for(let i=2;i*i<=n;i++){if(n%i===0)return false;}return true;}
+function sumDigits(n){return n.toString().split('').reduce((s,d)=>s+Number(d),0);}
+
+/* ================= Notifications & Info toggles ================= */
+let notificationsOn=false;
+let infoOn=false;
+const notifyBar = document.getElementById('notifyBar');
+function notify(msg){
+  if(!notificationsOn) return;
+  notifyBar.textContent = msg;
+  notifyBar.classList.add('show');
+  setTimeout(()=>notifyBar.classList.remove('show'), 5000);
+}
+document.getElementById('toggleNotify').onclick=()=>{
+  notificationsOn = !notificationsOn;
+  document.getElementById('toggleNotify').textContent = notificationsOn ? 'Notifications: On' : 'Notifications: Off';
+};
+document.getElementById('toggleInfo').onclick=()=>{
+  infoOn = !infoOn;
+  document.getElementById('toggleInfo').textContent = infoOn ? 'Info: On' : 'Info: Off';
+  renderPlayers();
+};
+
+/* ================= Roles & Powers (display model) ================= */
+const Roles = {
+  "Stealer":  { color:"#ef4444", img:"images/chars/stealer.jpg",
+    blurb:"No one’s safe when I’m around — what’s yours soon becomes mine.",
+    powers:[
+      { name:"Pickpocket", costText:"🪙🪙", desc:"Steal +1 (config) from all others (shielded are immune)" },
+      { name:"Treasure Snatcher", costText:"🪙🪙", desc:"If anyone finds treasure this round, steal it" },
+      { name:"Shield Breaker", costText:"🪙🪙", desc:"Remove everyone’s shields" }
+    ]},
+  "Futurist":  { color:"#f59e0b", img:"images/chars/futurist.jpg",
+    blurb:"I see tomorrow’s treasures before you even make a move.",
+    powers:[
+      { name:"Future Vision", costText:"🪙🪙", desc:"Detect when someone clicks near treasure" },
+      { name:"Temporal Trap", costText:"🪙🪙", desc:"Make others’ clicks into traps" },
+      { name:"Precognition", costText:"🪙🪙", desc:"Receive hint of 4 coin spots" }
+    ]},
+  "Healer":  { color:"#10b981", img:"images/chars/healer.jpg",
+    blurb:"Life and death bend to my will — mercy pays in coins.",
+    powers:[
+      { name:"Instant Recovery", costText:"🪙🪙", desc:"Revive yourself instantly" },
+      { name:"Coma Effect", costText:"🪙🪙", desc:"Extend others’ death by 1 round" },
+      { name:"Resurrection Reward", costText:"🪙🪙", desc:"Revive someone; gain 5 coins" }
+    ]},
+  "Psycho-Dang":  { color:"#3b82f6", img:"images/chars/psycho-dang.jpg",
+    blurb:"Chaos is my weapon — even time itself bends to my madness.",
+    powers:[
+      { name:"Hallucinate Host", costText:"🪙🪙", desc:"Steal 5 coins from host" },
+      { name:"Mass Confusion", costText:"🪙🪙", desc:"All powers fail this round" },
+      { name:"Mind Timer", costText:"🪙🪙", desc:"Even-second clicks succeed" }
+    ]},
+  "Trader":  { color:"#a855f7", img:"images/chars/trader.jpg",
+    blurb:"Profit never dies — it just changes owners.",
+    powers:[
+      { name:"Under-the-Table Deal", costText:"🪙🪙", desc:"Bribe host to act while dead" },
+      { name:"Investment", costText:"🪙🪙", desc:"Pay 2 coins to double found coins" },
+      { name:"Inflation", costText:"🪙🪙", desc:"All others lose 1 coin" }
+    ]},
+  "Hitman":  { color:"#ec4899", img:"images/chars/hitman.jpg",
+    blurb:"Pay up or disappear — business is business.",
+    powers:[
+      { name:"Threaten Host", costText:"🪙🪙", desc:"Gain 5 coins from host" },
+      { name:"Kidnapper", costText:"🪙🪙", desc:"Capture treasure finder" },
+      { name:"Hostage Situation", costText:"🪙🪙", desc:"Only you can use powers" }
+    ]},
+  "Police":  { color:"#14b8a6", img:"images/chars/police.jpg",
+    blurb:"Law above loot — How about both?",
+    powers:[
+      { name:"Hide the Treasure", costText:"🪙🪙", desc:"Treasure hidden for 2 rounds" },
+      { name:"Encounter", costText:"🪙🪙", desc:"Take treasure from finder" },
+      { name:"Citywide Curfew", costText:"🪙🪙", desc:"No player can Standby" }
+    ]},
+  "Hacker":  { color:"#eab308", img:"images/chars/hacker.jpg",
+    blurb:"Why dig for gold when I can just reroute your wealth?",
+    powers:[
+      { name:"Coin Hack", costText:"🪙🪙", desc:"Steal 1 coin from all players" },
+      { name:"Treasure Scanner", costText:"🪙🪙", desc:"Detect treasure within ±10" },
+      { name:"Side Channel", costText:"🪙🪙", desc:"Gain host’s extra payments" }
+    ]},
+  "Impersonator":  { color:"#ef4444", img:"images/chars/impersonater.jpg",
+    blurb:"Masks within masks — I become whoever wins.",
+    powers:[
+      { name:"Fake Clues", costText:"🪙🪙", desc:"Host gives false hints" },
+      { name:"Mimic", costText:"🪙🪙", desc:"Use any other role’s power this round" },
+      { name:"Copy Reward", costText:"🪙🪙", desc:"Gain same coin bonus as others" }
+    ]},
+  "Gambler":  { color:"#f59e0b", img:"images/chars/gambler.jpg",
+    blurb:"Risk is the only law — fortune favors the fearless.",
+    powers:[
+      { name:"High Stakes", costText:"🪙🪙", desc:"Pay 2 coins to roll; 2/4 → +5" },
+      { name:"Treasure Trick", costText:"🪙🪙", desc:"Next treasure becomes false" },
+      { name:"Double or Nothing", costText:"🪙🪙", desc:"Re-roll to double or lose" }
+    ]}
+};
+
+/* ================= Decks & Backdrop ================= */
+const FunnyDeckRaw=[ "Show your best dance move.","Tell your best joke!","Act like a robot for 5 seconds.","Do a slow-motion run.","Give an epic villain laugh." ];
+const FortuneDeckRaw=[ "🧩 Lucky Find — You automatically avoid the next Trap you hit.","🛡️ Fortune Shield — Protect yourself from losing points once.","🎁 Gift Swap — Pick another player to give you their next reward." ];
+const RiskyDeckRaw=[ "⚡ Shock Twist — Swap your next turn with another player.","🎲 Gamble Card — heads +5, tails −5.","🧨 Trap Magnet — Your next pick is a Trap 😬"]; 
+const TrapDeckRaw=[ "💀 Trap — Lose 3 points.","💥 Mine Explosion — Lose 2 points and a turn." ];
+const EmptyDeckRaw=[ "📦 Empty Box — There is nothing here." ];
+const Coin1=[ "🪙 Tiny Triumph — +1 coin.", "✨ Little Spark — +1 coin." ];
+const Coin2=[ "🪙🪙 Solid Find — +2 coins." ];
+const Coin4=[ "🪙🪙🪙🪙 Gold Rush — +4 coins!" ];
+function makeDeck(items){let pool=[...items];shuffle(pool);return{draw(){if(pool.length===0){pool=[...items];shuffle(pool);}return pool.shift();},reset(){pool=[...items];shuffle(pool);}}}
+const FunnyDeck=makeDeck(FunnyDeckRaw);
+const FortuneDeck=makeDeck(FortuneDeckRaw);
+const RiskyDeck=makeDeck(RiskyDeckRaw);
+const TrapDeck=makeDeck(TrapDeckRaw);
+const EmptyDeck=makeDeck(EmptyDeckRaw);
+
+let TOTAL=50;
+let STARTING_COINS=0; /* new */
+const COUNTS={Funny:7,Fortune:8,Risky:7,Trap:8,Empty:5,Clue:9,Treasure:1};
+let behind=[];
+let backdropPath=null;
+
+function randomBackdrop(){ const n = Math.floor(Math.random()*2940)+1; return `images/celebrity/pic (${n}).jpg`; }
+function applyBackdrop(){ const board = document.getElementById('board'); if(backdropPath){ board.style.backgroundImage = `url("${backdropPath}")`; const ov=window.overlayEl; if(ov) ov.style.backgroundImage = `url("${backdropPath}")`; } }
+function setTotal(n){ n=Math.max(50, Math.min(100, Number(n)||50)); TOTAL = n; buildBehind(); buildBoard(); applyBackdrop(); }
+function buildBehind(){ const pool=[]; for(const k in COUNTS){for(let i=0;i<COUNTS[k];i++) pool.push(k);} while(pool.length<TOTAL) pool.push('Coin'); shuffle(pool); behind = pool.slice(0,TOTAL); }
+function treasureIndex(){return behind.findIndex(x=>'Treasure'===x);} 
+function typeAt(idx){return behind[idx];}
+function labelOf(type){ if(type==='Fortune') return 'Fortune card'; if(type==='Funny') return 'Funny Task'; if(type==='Risky') return 'Risky Card'; return type; }
+
+/* ================= Clues (unchanged) ================= */
+let usedClues=new Set();
+function applicableClues(fromIdx){
+  const out=[]; const tIdx=treasureIndex(); if(tIdx<0) return ["No treasure placed."]; /* ... (same as before) ... */
+  const tNum=tIdx+1, curNum=fromIdx+1, dNum=Math.abs(tNum-curNum);
+  const col=tIdx%10;
+  const rightIdx=(col<9)?tIdx+1:null, leftIdx=(col>0)?tIdx-1:null;
+  const aboveIdx=(tIdx>=10)?tIdx-10:null, underIdx=(tIdx<40)?tIdx+10:null;
+  const rightType=rightIdx!==null?typeAt(rightIdx):null;
+  const leftType=leftIdx!==null?typeAt(leftIdx):null;
+  const aboveType=aboveIdx!==null?typeAt(aboveIdx):null;
+  const underType=underIdx!==null?typeAt(underIdx):null;
+  const allowed=['Trap','Coin','Clue','Fortune','Funny','Risky','Empty'];
+  if(tNum%5===0) out.push("Treasure is divisible by 5.");
+  if(tNum%2!==0 && tNum%3!==0) out.push("Treasure is not divisible by 2 or 3.");
+  if(tNum%10===0 || tNum%10===5) out.push("Treasure ends with a 0 or 5.");
+  if(tNum>35) out.push("Treasure is greater than 35.");
+  if(tNum<15) out.push("Treasure is less than 15.");
+  if(Math.abs(tNum-1) < Math.abs(tNum-50)) out.push("Treasure is closer to 1 than 50.");
+  if(Math.abs(tNum-50) < Math.abs(tNum-1)) out.push("Treasure is closer to 50 than 1.");
+  if(isPrime(dNum)) out.push("The difference between your number and Treasure is a prime number.");
+  if(((tNum*tNum)%10)===4) out.push("The Treasure’s number squared ends with a 4.");
+  if(sumDigits(tNum)%2===0) out.push("The Treasure hides where the sum of digits is even.");
+  if(dNum<=10) out.push("Treasure is within ±10 of your current number.");
+  if(dNum>15) out.push("Treasure is more than 15 away from your current position.");
+  const r=Math.floor(tIdx/10), c=tIdx%10;
+  if(r>=1&&r<=3&&c>=2&&c<=7) out.push("Treasure is in the middle region of the board.");
+  const fr=Math.floor(fromIdx/10), fc=fromIdx%10;
+  if(Math.abs(r-fr)===Math.abs(c-fc)) out.push("Treasure shares a diagonal with your number.");
+  if(rightType && leftType && allowed.includes(rightType) && allowed.includes(leftType)){ out.push(`Treasure Right = ${labelOf(rightType)}; Treasure Left = ${labelOf(leftType)}`); }
+  if(aboveType && underType && allowed.includes(aboveType) && allowed.includes(underType)){ out.push(`Treasure Above = ${labelOf(underType)}; Treasure Under = ${labelOf(aboveType)}`); }
+  let candidates=out.filter(t=>!usedClues.has(t)); if(candidates.length===0){usedClues.clear();candidates=out.slice();}
+  return candidates;
+}
+function drawClue(fromIdx){ let chosen; try{ if(impersonatorFakeCluesIdx!==null && current!==impersonatorFakeCluesIdx){ const used = Array.from(usedClues||[]); if(used.length){ chosen = used[Math.floor(Math.random()*used.length)]; } } }catch(e){} if(!chosen){ chosen=pick(applicableClues(fromIdx)); } usedClues.add(chosen); openPopup('clue','🧩 Clue',chosen,{afterClose: nextTurn}); }
+
+/* ================= Players & Turn Engine ================= */
+let players=[]; 
+let current=0; let selectedPlayer=0; let turnDir=1;
+
+const playersBar=document.getElementById('playersBar');
+function renderPlayers(){
+  playersBar.innerHTML='';
+  players.forEach((p,idx)=>{
+    const el=document.createElement('div');
+    el.className='player'+(idx===current?' current':'')+(p.blocked?' blocked':'');
+    el.style.setProperty('--accent', p.color||'#60a5fa');
+    const badges = infoOn ? `<span class="badges">${p.standbyArmed?'⏸️':''}${p.shield?'🛡️':''}</span>` : '';
+    el.innerHTML=`<span class="dot" style="background:${p.color||'#60a5fa'}"></span>
+                  <span>${p.name||('Player '+(idx+1))}</span>${badges}`;
+    el.onmouseenter=()=>{ el.classList.add('accentBorder'); el.style.setProperty('--accent', currentAccent()); };
+    el.onmouseleave=()=>{ el.classList.remove('accentBorder'); };
+    el.onclick=()=>openPlayerPopup(idx);
+    playersBar.appendChild(el);
+  });
+  updateHoverAccent();
+}
+
+function onTurnStart(i){
+
+  // Clear round-scoped power blockers & instant recovery flag for the current player
+  roundPowerBlockers.delete(i);
+  const p2 = players[i];
+  if (p2 && p2.instantRecoveryOn && p2.instantRecoveryExpireNextTurn){ p2.instantRecoveryOn=false; p2.instantRecoveryExpireNextTurn=false; }
+  // Disarm Future Vision/Scanner for this player
+  futureVisionIdxs.delete(i);
+  hackerScannerIdxs.delete(i);
+  // Disarm Kidnapper for this player
+  if (i === hitmanKidnapperIdx){ hitmanKidnapperIdx = null; }
+
+  if (i === policeHideIdx){ policeHideIdx = null; policeHideTriggered=false; }
+  if (i === policeEncounterIdx){ policeEncounterIdx = null; }
+  if (i === impersonatorFakeCluesIdx){ impersonatorFakeCluesIdx = null; }
+  if (i === impersonatorMimicIdx){ impersonatorMimicIdx = null; }
+  if (i === impersonatorSnatcherIdx){ impersonatorSnatcherIdx = null; }
+  if (i === gamblerTrickIdx){ gamblerTrickIdx = null; }
+  standbyDisabledForRound = false;
+
+  const p = players[i];
+  if(p.shield && p.shieldExpireNextTurn){ p.shield=false; p.shieldExpireNextTurn=false; }
+  if(p.standbyArmed && p.standbyExpireNextTurn){ p.standbyArmed=false; p.standbyExpireNextTurn=false; }
+  if(p.treasureSnatcherArmed && p.treasureSnatcherExpireNextTurn){ p.treasureSnatcherArmed=false; p.treasureSnatcherExpireNextTurn=false; }
+  p.usedPowers = new Set();
+}
+
+function nextTurn(opts={}){
+  const awardCoin = opts.awardCoin !== false;
+  if(players.length && awardCoin){ awardCoins(current, +1); }
+  if(players[current]?.extraTurns>0){ players[current].extraTurns -= 1; renderPlayers(); return; }
+  stepToNextActive(turnDir);
+}
+
+function stepToNextActive(dir){
+  let tries=0;
+  do{
+    current=(current+dir+players.length)%players.length;
+    if(players[current]?.blocked && (players[current].blockedRounds||0)>0){
+      players[current].blockedRounds -= 1;
+      if(players[current].blockedRounds<=0){ players[current].blocked=false; players[current].blockedRounds=0; }
+    }
+    tries++;
+    if(tries>players.length+1) break;
+  } while(players[current]?.blocked);
+  onTurnStart(current);
+  renderPlayers();
+}
+
+function awardCoins(idx,delta){
+  if(!players[idx]) return;
+  players[idx].coins=Math.max(0,(players[idx].coins||0)+delta);
+  if(idx===selectedPlayer){ updatePlayerPopupCoins(); }
+  renderPlayers();
+}
+
+function titleFor(p){ return `${p.name} (${p.roleKey || '—'})`; }
+function playerTitle(p){ return `${p.name} (${p.roleKey || '—'})`; }
+
+/* ================= Popup Helpers ================= */
+const popup=document.getElementById('popup');
+const card=document.getElementById('popupCard');
+const pTitle=document.getElementById('popupTitle');
+const pText=document.getElementById('popupText');
+const pActions=document.getElementById('popupActions');
+let afterCloseCallback=null;
+
+function openPopup(type,title,text,opts={}){
+  card.className='card';
+  if(type==='fortune') card.classList.add('fortune-bg','glow');
+  else if(type==='risky') card.classList.add('risky-bg','glow');
+  else if(type==='funny') card.classList.add('funny-bg','glow');
+  else if(type==='clue') card.classList.add('clue-bg','glow');
+  else if(type==='trap') card.classList.add('trap-bg','glow');
+  else if(type==='light') card.classList.add('light-bg','glow');
+  else if(type==='coin' || type==='gold') card.classList.add('gold-bg','glow');
+
+  if(opts.narrow){ card.classList.add('narrow'); }
+  if(opts.scrollable){ card.classList.add('scrollable'); }
+  if(opts.bigtitle){ card.classList.add('bigtitle'); }
+  if(opts.landscape){ card.classList.add('landscape'); }
+
+  if(opts.tintColor){ card.classList.add('tinted'); card.style.setProperty('--tint', opts.tintColor); }
+  else { card.classList.remove('tinted'); card.style.removeProperty('--tint'); }
+  if(opts.anim==='reveal'){ card.classList.add('reveal-anim'); }
+
+  pTitle.textContent=title;
+  if (opts.html) { pText.innerHTML = text || ''; } else { pText.textContent = text || ''; }
+  pActions.innerHTML='';
+  const closeBtn=document.createElement('button');
+  closeBtn.textContent='Close';
+  closeBtn.className = 'pill-close-black';
+  afterCloseCallback=opts.afterClose||null;
+  closeBtn.onclick=()=>{ popup.classList.remove('open'); if(afterCloseCallback){const cb=afterCloseCallback; afterCloseCallback=null; cb();} };
+  pActions.appendChild(closeBtn);
+  popup.classList.add('open');
+}
+
+/* ================= Fireworks & Winner ================= */
+const fw=document.getElementById('fireworks');const ctx=fw.getContext('2d');
+let fwRunning=false,particles=[];
+function resize(){fw.width=innerWidth;fw.height=innerHeight;} resize(); addEventListener('resize',resize);
+function burst(x,y,color,count=120){for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2;const s=Math.random()*6+2;particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,alpha:1,color});}}
+function drawFW(){ctx.clearRect(0,0,fw.width,fw.height);for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.alpha-=0.008;}particles=particles.filter(p=>p.alpha>0);for(const p of particles){ctx.globalAlpha=p.alpha;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,2,0,2*Math.PI);ctx.fill();}ctx.globalAlpha=1;if(fwRunning)requestAnimationFrame(drawFW);} 
+function startFireworks(){if(fwRunning)return;fwRunning=true;const colors=['#facc15','#22c55e','#60a5fa','#f472b6','#f97316','#a78bfa'];const W=fw.width,H=fw.height;for(let i=0;i<30;i++){setTimeout(()=>{const x=Math.random()*W,y=Math.random()*H;burst(x,y,colors[i%colors.length],120);},i*100)}drawFW();setTimeout(()=>{fwRunning=false;particles=[];ctx.clearRect(0,0,W,H);},5000)}
+function showWinnerBanner(name, opts = {}){ 
+  const b=document.getElementById('winnerBanner'); 
+  if (opts && opts.message) b.textContent = opts.message;
+  else b.textContent = opts.stolen ? `🗡️ Treasure stolen: ${name} wins!` : `🏆 ${name} found the Treasure!`;
+  b.style.display='block'; 
+  setTimeout(()=>b.style.display='none', 4500); 
+}
+
+/* ================= Board ================= */
+let faceImages=[];
+async function loadImageList(){
+  try{ const res = await fetch('images/index.json',{cache:'no-store'}); if(res.ok){ const arr = await res.json(); if(Array.isArray(arr)&&arr.length) return arr.map(n=>`images/${n}`);} }catch(e){}
+  const out=[]; for(let i=1;i<=Math.max(TOTAL,50);i++) out.push(`images/${i}.jpg`); return out;
+}
+const board=document.getElementById('board');
+const overlayEl = document.createElement('div'); overlayEl.className='backdrop-overlay'; window.overlayEl = overlayEl;
+let overlayOn=false;
+
+// === Shared/grouped power state (additive) ===
+let futureVisionIdxs = new Set();     // Futurist:Future Vision
+// (hackerScannerIdxs already exists) -> reuse but adjust range
+let nextTrap = null;                   // {targetIdx, mode:'always'|'odd'}
+let roundPowerBlockers = new Set();    // indexes of players who block others' powers this round
+
+function armNextTrap(actorIdx, mode){
+  const cur = (typeof current==='number') ? current : actorIdx;
+  const n = (Array.isArray(players) ? players.length : 0);
+  const target = n ? ((cur + 1) % n) : null;
+  nextTrap = { targetIdx: target, mode };
+  notify(players[actorIdx].name + ' set a trap for the next player');
+}
+
+// Instant recovery helper (Healer / Trader:Under-the-Table Deal)
+function fx_armInstantRecovery(actorIdx){
+  const p = players[actorIdx];
+  p.instantRecoveryOn = true;  // round-scoped flag
+  p.instantRecoveryExpireNextTurn = true;
+  if (p.blocked){
+    p.blocked = false; p.blockedRounds = 0;
+    notify(p.name + ' recovered!');
+  }
+  if (window.renderPlayers) renderPlayers();
+}
+function __autoUnblockIfFlag(i){
+  try{
+    const p = players[i];
+    if (p && p.instantRecoveryOn && p.blocked){
+      p.blocked=false; p.blockedRounds=0;
+      notify(p.name + ' recovered instantly!');
+      if (window.renderPlayers) renderPlayers();
+    }
+  }catch(e){}
+}
+
+
+// === Added globals for new/adjusted powers ===
+let policeHideIdx = null;
+let policeHideTriggered = false;
+let policeEncounterIdx = null;
+let standbyDisabledForRound = false;
+let hackerScannerIdxs = new Set();
+let impersonatorFakeCluesIdx = null;
+let impersonatorMimicIdx = null;
+let impersonatorSnatcherIdx = null;
+let hitmanKidnapperIdx = null; // if you add Hitman later
+let gamblerTrickIdx = null;
+
+function treasureIndex(){ return behind.findIndex(k=>k==='Treasure'); }
+function moveTreasureFrom(oldIdx){
+  try{
+    const unrevealed=[...board.children].map((el,idx)=>({el,idx})).filter(x=>!x.el.classList.contains('revealed') && x.idx!==oldIdx);
+    if(unrevealed.length===0) return;
+    const pickIdx = unrevealed[Math.floor(Math.random()*unrevealed.length)].idx;
+    behind[oldIdx] = 'Empty';
+    behind[pickIdx] = 'Treasure';
+    notify('🔁 Treasure slipped to a new location!');
+  }catch(e){}
+}
+
+
+function buildBoard(){
+  board.innerHTML='';
+  for(let i=0;i<TOTAL;i++){
+    const n=i+1;
+    const t=document.createElement('div');
+    t.className='tile';
+    t.innerHTML=`<span class='num'>${n}</span>`;
+    t.onclick=(()=>{ const idx=i; return ()=>handleTileClick(t,idx); })();
+    board.appendChild(t);
+  }
+  if(!overlayEl.isConnected) board.appendChild(overlayEl);
+  updateHoverAccent(); applyBackdrop();
+}
+
+function applyFaceImages(){
+  if(!faceImages.length) return;
+  const tiles=[...board.children];
+  const imgs=faceImages.slice(); shuffle(imgs);
+  tiles.forEach((t,idx)=>{ const img=imgs[idx%imgs.length]; t.dataset.face=img; t.style.backgroundImage=`url("${img}")`; });
+}
+
+function handleTileClick(tile,i){
+  if(tile.classList.contains('revealed') && !tile.classList.contains('cleared')){ clearTile(tile); return; }
+  if(tile.classList.contains('cleared')) return;
+  reveal(tile,i);
+}
+
+function clearTile(tile){ tile.classList.add('cleared'); tile.innerHTML=''; tile.onclick=null; }
+
+function reveal(tile,i){
+  if(tile.classList.contains('revealed'))return;
+  
+  // --- Early hooks: Police Hide & Gambler Trick ---
+  if (policeHideIdx!==null && policeHideIdx!==current && behind[i]==='Treasure'){
+    moveTreasureFrom(i); policeHideTriggered = true; awardCoins(policeHideIdx, +5);
+    tile.classList.add('revealed','theme-empty');
+    tile.innerHTML="<div class='drawer'><div class='content'><strong>📦 Empty</strong></div></div>";
+    openPopup('light','📦 Empty','You almost had it…',{afterClose: nextTurn, narrow:true});
+    tile.onclick=()=>clearTile(tile);
+    return;
+  }
+  if (gamblerTrickIdx!==null && gamblerTrickIdx!==current && behind[i]==='Treasure'){
+    moveTreasureFrom(i); awardCoins(gamblerTrickIdx, +5);
+    tile.classList.add('revealed','theme-empty');
+    tile.innerHTML="<div class='drawer'><div class='content'><strong>📦 Empty</strong></div></div>";
+    openPopup('light','📦 Empty','A trick! Treasure was fake.',{afterClose: nextTurn, narrow:true});
+    tile.onclick=()=>clearTile(tile);
+    return;
+  }
+  // --- Hacker Treasure Scanner glow (±5 of treasure) ---
+  try{
+    const tIdx = treasureIndex();
+    if (tIdx>=0){
+      const diff5 = Math.abs(i - tIdx);
+      if (diff5>0 && diff5<=5){
+        hackerScannerIdxs.forEach(hIdx=>{
+          setTimeout(()=>{
+            document.querySelectorAll('button[id^="ppUsePower_"]').forEach(btn=>{
+              if(btn.textContent.trim().toLowerCase().includes('treasure scanner')){ btn.classList.add('shield-glow'); }
+            });
+          },0);
+        });
+      }
+    }
+  }catch(e){}
+
+  
+  // Detector glow for near-treasure clicks (Future Vision & Treasure Scanner)
+  try{
+    const tIdx = treasureIndex();
+    if (tIdx >= 0){
+      const diff = Math.abs(i - tIdx);
+      const near = (diff===1 || diff===9 || diff===10 || diff===11);
+      if (near && typeof current==='number'){
+        // Glow for Futurist owners (excluding the clicking player)
+        futureVisionIdxs.forEach(fIdx=>{
+          if (fIdx!==current){
+            document.querySelectorAll('button[id^="ppUsePower_"]').forEach(btn=>{
+              const tx=(btn.textContent||'').trim().toLowerCase();
+              if(tx.includes('future vision')) btn.classList.add('shield-glow');
+            });
+          }
+        });
+        // Glow for Hacker owners (excluding the clicking player)
+        hackerScannerIdxs.forEach(hIdx=>{
+          if (hIdx!==current){
+            document.querySelectorAll('button[id^="ppUsePower_"]').forEach(btn=>{
+              const tx=(btn.textContent||'').trim().toLowerCase();
+              if(tx.includes('treasure scanner')) btn.classList.add('shield-glow');
+            });
+          }
+        });
+      }
+    }
+  }catch(e){}
+
+  // One-shot next-turn trap (Temporal Trap & Mind Timer)
+  if (nextTrap && typeof current==='number' && nextTrap.targetIdx===current){
+    let trigger=false;
+    if (nextTrap.mode==='always') trigger=true;
+    if (nextTrap.mode==='odd'){ const sec=(new Date()).getSeconds(); if (sec%2===1) trigger=true; }
+    if (trigger){
+      if (behind[i]==='Treasure'){ moveTreasureFrom(i); }
+      tile.classList.add('revealed','theme-trap');
+      tile.innerHTML="<div class='drawer'><div class='content'><strong>💀 Trap</strong></div></div>";
+      awardCoins(current,-3);
+      openPopup('trap','💀 Trap','You fell into a trap.',{afterClose: nextTurn});
+      tile.onclick=()=>clearTile(tile);
+      nextTrap = null;
+      return;
+    } else {
+      nextTrap = null;
+    }
+  }
+
+  const kind=behind[i];
+  tile.classList.add('revealed');
+
+  if(kind==='Treasure'){
+    tile.classList.add('theme-treasure');
+    tile.innerHTML="<div class='drawer'><div class='content'><strong>🎉 💰 TREASURE!</strong></div></div>";
+
+    const baseCoins = 10;
+    const result = __tc_resolveTreasureReward(current, baseCoins); 
+    if (result && typeof result.to === 'number') {
+      awardCoins(result.to, result.coins || 0);
+      const message = result.message 
+        || (result.intercepted ? `🗡️ Treasure stolen: ${players[result.to]?.name||'Someone'} wins!`
+                               : `🏆 ${players[result.to]?.name||'Someone'} found the Treasure and wins!`);
+      showWinnerBanner(null, { message });
+    } else {
+      awardCoins(current, baseCoins);
+      showWinnerBanner(players[current]?.name || 'Someone');
+    }
+
+    startFireworks();
+    nextTurn();
+    return;
+  }
+
+  if(kind==='Coin'){
+    tile.classList.add('theme-coin');
+    const vals=[1,2,4]; const coins=vals[Math.floor(Math.random()*vals.length)];
+    const icons=coins===1?'🪙':coins===2?'🪙🪙':'🪙🪙🪙🪙';
+    tile.innerHTML=`<div class='drawer'><div class='content'><strong>${icons}</strong></div></div>`;
+    awardCoins(current,coins);
+    const msg=coins===1?pick(Coin1):coins===2?pick(Coin2):pick(Coin4);
+    openPopup('coin', icons, msg, {afterClose: nextTurn, narrow:true});
+  }
+  else if(kind==='Funny'){
+    tile.classList.add('theme-funny');
+    tile.innerHTML=`<div class='drawer'><div class='content'><strong>🎭 Funny</strong></div><button class='pill-draw pill-funny'>Draw</button></div>`;
+    tile.querySelector('button').onclick=e=>{e.stopPropagation();openPopup('funny','🎭 Funny Task',FunnyDeck.draw(),{afterClose: nextTurn});};
+  }
+  else if(kind==='Fortune'){
+    tile.classList.add('theme-fortune');
+    tile.innerHTML=`<div class='drawer'><div class='content'><strong>💎 Fortune</strong></div><button class='pill-draw pill-fortune'>Draw</button></div>`;
+    tile.querySelector('button').onclick=e=>{e.stopPropagation();openPopup('fortune','💎 Fortune Card',FortuneDeck.draw(),{afterClose: nextTurn});};
+  }
+  else if(kind==='Risky'){
+    tile.classList.add('theme-risky');
+    tile.innerHTML=`<div class='drawer'><div class='content'><strong>💣 Risky</strong></div><button class='pill-draw pill-risky'>Draw</button></div>`;
+    tile.querySelector('button').onclick=e=>{e.stopPropagation();openPopup('risky','💣 Risky Card',RiskyDeck.draw(),{afterClose: nextTurn});};
+  }
+  else if(kind==='Clue'){
+    tile.classList.add('theme-clue');
+    tile.innerHTML=`<div class='drawer'><div class='content'><strong>🧩 Clue</strong></div><button class='pill-draw pill-clue'>Draw</button></div>`;
+    tile.querySelector('button').onclick=e=>{e.stopPropagation();drawClue(i);};
+  }
+  else if(kind==='Trap'){
+    tile.classList.add('theme-trap');
+    tile.innerHTML="<div class='drawer'><div class='content'><strong>💀 Trap</strong></div></div>";
+    awardCoins(current,-3);
+    openPopup('trap','💀 Trap',TrapDeck.draw(),{afterClose: nextTurn});
+  }
+  else if(kind==='Empty'){
+    tile.classList.add('theme-empty');
+    tile.innerHTML="<div class='drawer'><div class='content'><strong>📦 Empty</strong></div></div>";
+    openPopup('light','📦 Empty',EmptyDeck.draw(),{afterClose: nextTurn, narrow:true});
+  }
+
+  tile.onclick=()=>clearTile(tile);
+}
+
+/* ================= Hover accent ================= */
+function currentAccent(){ return players.length ? (players[current].color||'#60a5fa') : '#60a5fa'; }
+function updateHoverAccent(){
+  document.querySelectorAll('.tile:not(.cleared)').forEach((t)=>{
+    t.onmouseenter=()=>{t.classList.add('accentBorder'); t.style.setProperty('--accent', currentAccent());};
+    t.onmouseleave=()=>{t.classList.remove('accentBorder');};
+  });
+}
+
+/* ================= Toolbar ================= */
+document.getElementById('revealAll').onclick=()=>document.querySelectorAll('.tile').forEach((t,i)=>{if(!t.classList.contains('revealed'))reveal(t,i);});
+document.getElementById('hideAll').onclick=()=>document.querySelectorAll('.tile').forEach((t,i)=>{
+  t.className='tile'; t.innerHTML=`<span class='num'>${i+1}</span>`; t.style.backgroundImage='';
+  t.onclick = (()=>{ const idx=i; return ()=>handleTileClick(t,idx); })();
+});
+document.getElementById('skipTurn').onclick=()=>{ if(!players.length) return; awardCoins(current, +2); nextTurn({awardCoin:false}); };
+document.getElementById('nextTurn').onclick=()=> nextTurn({awardCoin:false});
+
+document.getElementById('showPictur').onclick=()=>{
+  if(!backdropPath){ backdropPath = randomBackdrop(); applyBackdrop(); }
+  overlayOn = !overlayOn; board.classList.toggle('overlay-on', overlayOn);
+  document.getElementById('showPictur').textContent = overlayOn ? 'Picture: Front' : 'Picture: Back';
+};
+document.getElementById('newPicture').onclick=()=>{
+  backdropPath = randomBackdrop(); applyBackdrop();
+  if(overlayOn) board.classList.add('overlay-on');
+  // Reactivate any used Bumpershot, no popup
+  players.forEach(p => p.bumperUsed=false);
+  notify('Bumpershot reactivated for all players');
+};
+let zoomLevel = 70;
+function applyZoom(){ zoomLevel = Math.max(30, Math.min(200, zoomLevel)); const ov=window.overlayEl; board.style.backgroundSize = zoomLevel + '%'; if(ov) ov.style.backgroundSize = zoomLevel + '%'; }
+document.getElementById('zoomIn').onclick=()=>{ zoomLevel += 10; applyZoom(); };
+document.getElementById('zoomOut').onclick=()=>{ zoomLevel -= 10; applyZoom(); };
+
+/* ================= Host panel (kept; tiles step bumped to 10) ================= */
+document.getElementById('hostBtn').onclick = () => openHostPanel();
+function openHostPanel(){
+  const hostHTML = `
+    <div class="host-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="host-section" style="border:1px solid rgba(0,0,0,.2);border-radius:12px;padding:12px;background:#fff;color:#111">
+        <h3 style="margin:0 0 8px">Coins & Status</h3>
+        <div class="host-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex-direction:column;align-items:flex-start">
+          <div><strong>Player:</strong></div>
+          <select id="hostPlayerSel" style="width:100%;padding:6px;border-radius:8px;border:1px solid rgba(0,0,0,.25)"></select>
+        </div>
+        <div class="host-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+          <label>Amount:</label>
+          <input id="hostAmount" type="number" value="1" step="1" min="0" style="width:90px;padding:6px;border-radius:8px;border:1px solid rgba(0,0,0,.25)" />
+          <button class="btn small" id="hostAdd">Add</button>
+          <button class="btn small" id="hostDeduct">Deduct</button>
+          <button class="btn small" id="hostReset">Reset to 0</button>
+        </div>
+        <div class="host-row" style="margin-top:10px;opacity:.8" id="hostInfo"></div>
+      </div>
+      <div class="host-section" style="border:1px solid rgba(0,0,0,.2);border-radius:12px;padding:12px;background:#fff;color:#111">
+        <h3 style="margin:0 0 8px">Board Tools</h3>
+        <div class="host-row" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn small" id="hostSafeNum">Generate safe number</button>
+          <button class="btn small" id="hostToggleBlock">Block/activate</button>
+          <button class="btn small" id="hostReverse">Reverse direction</button>
+        </div>
+        <div class="host-row" style="display:flex;gap:8px;align-items:center;margin-top:10px">
+          <label for="hostTiles"><strong>Tiles:</strong></label>
+          <input id="hostTiles" type="number" min="50" max="100" step="10" value="${TOTAL}" style="width:90px;padding:6px;border-radius:8px;border:1px solid rgba(0,0,0,.25)" />
+          <button class="btn small" id="hostTilesApply">Apply</button>
+          <span class="host-note" id="hostTilesNote" style="opacity:.8">Range 50–100 (step 10)</span>
+        </div>
+      </div>
+    </div>`;
+  openPopup('light','🎛️ Host Controls', hostHTML, {html:true});
+
+  setTimeout(()=>{
+    const sel=document.getElementById('hostPlayerSel');
+    const amtEl=document.getElementById('hostAmount');
+    const info=document.getElementById('hostInfo');
+
+    players.forEach((p,idx)=>{
+      const opt=document.createElement('option');
+      opt.value=idx; opt.textContent=`${p.name} ${p.blocked?'(blocked)':''} — ${p.coins} coins — ${p.roleKey||'—'}`;
+      sel.appendChild(opt);
+    });
+
+    function refreshOptionLabels(){
+      const keep = sel.value;
+      [...sel.options].forEach((opt)=>{
+        const i=Number(opt.value);
+        const p=players[i];
+        opt.textContent = `${p.name} ${p.blocked?'(blocked)':''} — ${p.coins} coins — ${p.roleKey||'—'}`;
+      });
+      sel.value = keep;
+    }
+
+    let _hostAddLast=0;
+    document.getElementById('hostAdd').onclick=()=>{
+      const now=Date.now(); if(now-_hostAddLast<250){ return; } _hostAddLast=now;
+      const i=Number(sel.value); const delta = Math.max(0, Number(amtEl.value)||0);
+      if(delta>0){ awardCoins(i, delta); refreshOptionLabels(); info.textContent=`Added +${delta} to ${players[i].name}.`; }
+    };
+    document.getElementById('hostDeduct').onclick=()=>{
+      const i=Number(sel.value); const delta = Math.max(0, Number(amtEl.value)||0);
+      if(delta>0){ awardCoins(i, -delta); refreshOptionLabels(); info.textContent=`Deducted −${delta} from ${players[i].name}.`; }
+    };
+    document.getElementById('hostReset').onclick=()=>{
+      const i=Number(sel.value); players[i].coins=0; renderPlayers(); if(i===selectedPlayer) updatePlayerPopupCoins();
+      refreshOptionLabels(); info.textContent=`Reset coins for ${players[i].name}.`;
+    };
+
+    document.getElementById('hostReverse').onclick=()=>{
+      let tries=0;
+      do{
+        current=(current+turnDir+players.length)%players.length;
+        if(players[current]?.blocked && (players[current].blockedRounds||0)>0){
+          players[current].blockedRounds -= 1;
+          if(players[current].blockedRounds<=0){ players[current].blocked=false; players[current].blockedRounds=0; }
+        }
+        tries++;
+        if(tries>players.length+1) break;
+      } while(players[current]?.blocked);
+      turnDir *= -1; onTurnStart(current); renderPlayers();
+      info.textContent = `Direction reversed (one step taken). Now ${turnDir===1?'forward':'reverse'}.`;
+    };
+
+    document.getElementById('hostToggleBlock').onclick=()=>{
+      const i=Number(sel.value); players[i].blocked=!players[i].blocked;
+      if(players[i].blocked && i===current){ nextTurn({awardCoin:false}); }
+      renderPlayers(); refreshOptionLabels();
+      info.textContent = `${players[i].name} is now ${players[i].blocked?'BLOCKED':'ACTIVE'}.`;
+    };
+
+    document.getElementById('hostSafeNum').onclick=()=>{
+      const unrevealed=[...board.children].map((el,idx)=>({el,idx})).filter(x=>!x.el.classList.contains('revealed'));
+      const safe=unrevealed.filter(x=>behind[x.idx]!=='Trap');
+      if(!safe.length){ info.textContent='No safe numbers left!'; return; }
+      const choice=pick(safe); const number=choice.idx+1;
+      info.textContent=`Safe number: ${number}`;
+      choice.el.style.outline='3px solid #22c55e'; setTimeout(()=>{choice.el.style.outline='';},1200);
+    };
+
+    document.getElementById('hostTilesApply').onclick=()=>{
+      const val = Number(document.getElementById('hostTiles').value)||TOTAL;
+      setTotal(val); info.textContent = `Tiles set to ${TOTAL}. Board rebuilt.`;
+    };
+  },0);
+}
+
+/* ================= Role Powers Engine (Stealer as in working version) ================= */
+const __tc_PowerHandlers = {
+  'Stealer:Pickpocket': async (actorIdx) => {
+    const STEAL_PER = 1;
+    let totalGained = 0;
+    players.forEach((pl, i) => {
+      if (i === actorIdx) return;
+      if (pl.shield) return;
+      const take = Math.min(STEAL_PER, pl.coins || 0);
+      if (take > 0) { pl.coins = Math.max(0, (pl.coins || 0) - take); totalGained += take; }
+    });
+    if (window.renderPlayers) renderPlayers();
+    return { coinsToActor: totalGained };
+  },
+
+  'Stealer:Treasure Snatcher': async (actorIdx) => {
+    const actor = players[actorIdx];
+    actor.treasureSnatcherArmed = true;
+    actor.treasureSnatcherExpireNextTurn = true;
+    notify(`${actor.name} armed Treasure Snatcher`);
+    return { coinsToActor: 0 };
+  },
+
+  
+  // === Trader ===
+  'Trader:Inflation': async (actorIdx) => {
+    const STEAL_PER = 1; let total=0;
+    players.forEach((pl,i)=>{ if(i===actorIdx) return; if(pl.shield) return; const take=Math.min(STEAL_PER, pl.coins||0); if(take>0){ pl.coins=Math.max(0,(pl.coins||0)-take); total+=take; } });
+    if(window.renderPlayers) renderPlayers();
+    return { coinsToActor: total };
+  },
+
+  // === Police ===
+  'Police:Hide the Treasure': async (actorIdx) => { policeHideIdx = actorIdx; policeHideTriggered=false; notify(`${players[actorIdx].name} hid the treasure`); return { coinsToActor: 0 }; },
+  'Police:Encounter': async (actorIdx) => { policeEncounterIdx = actorIdx; notify(`${players[actorIdx].name} will confiscate the treasure`); return { coinsToActor: 0 }; },
+  'Police:Citywide Curfew': async (actorIdx) => { standbyDisabledForRound = true; notify(`Curfew in effect — Standby disabled this round`); return { coinsToActor: 0 }; },
+
+  // === Hacker ===
+  'Hacker:Coin Hack': async (actorIdx) => {
+    const STEAL_PER = 1; let total=0;
+    players.forEach((pl,i)=>{ if(i===actorIdx) return; if(pl.shield) return; const take=Math.min(STEAL_PER, pl.coins||0); if(take>0){ pl.coins=Math.max(0,(pl.coins||0)-take); total+=take; } });
+    if(window.renderPlayers) renderPlayers();
+    return { coinsToActor: total };
+  },
+  'Hacker:Treasure Scanner': async (actorIdx) => { hackerScannerIdxs.add(actorIdx); notify(`${players[actorIdx].name} activated Treasure Scanner`); return { coinsToActor: 0 }; },
+  'Hacker:Side Channel': async (actorIdx) => { const p=players[actorIdx]; const cur=p.coins||0; if(cur>0){ awardCoins(actorIdx, cur); } else { notify(`${p.name} has nothing to double`); } return { coinsToActor: 0 }; },
+
+  // === Impersonator ===
+  'Impersonator:Fake Clues': async (actorIdx) => { impersonatorFakeCluesIdx = actorIdx; notify(`${players[actorIdx].name} prepared fake clues`); return { coinsToActor: 0 }; },
+  'Impersonator:Mimic': async (actorIdx) => { impersonatorMimicIdx = actorIdx; notify(`${players[actorIdx].name} will mimic coin benefits this round`); return { coinsToActor: 0 }; },
+  'Impersonator:Copy Reward': async (actorIdx) => { impersonatorSnatcherIdx = actorIdx; notify(`${players[actorIdx].name} is ready to copy the treasure reward`); return { coinsToActor: 0 }; },
+
+  // === Gambler ===
+  'Gambler:High Stakes': async (actorIdx) => { const roll=1+Math.floor(Math.random()*6); if(roll%2===0){ awardCoins(actorIdx, +5); } openPopup('light','🎲 High Stakes',`Rolled <b>${roll}</b> — ${roll%2===0?'+5 coins':'no change'}`,{html:true,narrow:true}); return { coinsToActor: 0 }; },
+  'Gambler:Treasure Trick': async (actorIdx) => { gamblerTrickIdx = actorIdx; notify(`${players[actorIdx].name} set up a treasure trick`); return { coinsToActor: 0 }; },
+  'Gambler:Double or Nothing': async (actorIdx) => { const p=players[actorIdx]; const cur=p.coins||0; const heads=Math.random()<0.5; if(heads){ awardCoins(actorIdx, cur); } else { awardCoins(actorIdx, -Math.floor(cur/2)); } openPopup('light','🪙 Double or Nothing', heads? 'Heads — doubled your coins' : 'Tails — lost half your coins', {narrow:true}); return { coinsToActor: 0 }; },
+'Stealer:Shield Breaker': async () => {
+    players.forEach(p => { p.shield = false; p.shieldExpireNextTurn = false; });
+    if (window.renderPlayers) renderPlayers();
+    notify(`All shields were removed`);
+    return { coinsToActor: 0 };
+  },
+
+  // Future roles can be added back here…
+  
+  'Healer:Instant Recovery': async (actorIdx) => { fx_armInstantRecovery(actorIdx); return { coinsToActor: 0 }; },
+
+  'Futurist:Temporal Trap': async (actorIdx) => { armNextTrap(actorIdx, 'always'); return { coinsToActor: 0 }; },
+
+  'Psycho-Dang:Mind Timer': async (actorIdx) => { armNextTrap(actorIdx, 'odd'); notify('Mind Timer armed: odd-second = trap'); return { coinsToActor: 0 }; },
+
+  'Hitman:Kidnapper': async (actorIdx) => { hitmanKidnapperIdx = actorIdx; notify(`${players[actorIdx].name} will kidnap the treasure`); return { coinsToActor: 0 }; },
+
+  'Trader:Investment': async (actorIdx) => { const cur=players[actorIdx].coins||0; if(cur>0){ awardCoins(actorIdx, cur); } else { notify(`${players[actorIdx].name} has nothing to double`); } return { coinsToActor: 0 }; },
+
+  'Psycho-Dang:Mass Confusion': async (actorIdx) => { roundPowerBlockers.add(actorIdx); notify(`${players[actorIdx].name} caused Mass Confusion — powers blocked this round`); return { coinsToActor: 0 }; },
+
+  'Hitman:Hostage Situation': async (actorIdx) => { roundPowerBlockers.add(actorIdx); notify(`${players[actorIdx].name} created a Hostage Situation — powers blocked this round`); return { coinsToActor: 0 }; },
+'default': async () => ({ coinsToActor: 0 })
+};
+
+function __tc_resolveTreasureReward(finderIdx, baseCoins){
+  const finder = players[finderIdx];
+  let holderIdx = finderIdx;
+  let intercepted = false;
+  let snatcherIdx = -1;
+  let predatorIdx = -1;
+
+  if (!finder?.shield){
+    snatcherIdx = players.findIndex(p=>p.treasureSnatcherArmed);
+    if (snatcherIdx >= 0){
+      holderIdx = snatcherIdx;
+      intercepted = true;
+    }
+  }
+
+  const holder = players[holderIdx];
+  const predI = typeof holder?.predatorIndex === 'number' ? holder.predatorIndex : -1;
+  const predator = predI >= 0 ? players[predI] : null;
+  if (predator && predator.standbyArmed && !holder?.shield){
+    predatorIdx = predI;
+    holderIdx = predI;
+    intercepted = true;
+  }
+  // Police/Hitman/Stealer/Impersonator takers: Police Encounter > Hitman Kidnapper > Stealer Snatcher > Impersonator Copy Reward
+  if (!finder?.shield){
+    if (policeEncounterIdx!==null && policeEncounterIdx!==finderIdx){ holderIdx = policeEncounterIdx; intercepted = true; }
+    if (!intercepted && typeof hitmanKidnapperIdx==='number' && hitmanKidnapperIdx!==finderIdx){ holderIdx = hitmanKidnapperIdx; intercepted = true; }
+    if (!intercepted && snatcherIdx>=0){ holderIdx = snatcherIdx; intercepted = true; }
+    if (!intercepted && typeof impersonatorSnatcherIdx==='number' && impersonatorSnatcherIdx!==finderIdx){ holderIdx = impersonatorSnatcherIdx; intercepted = true; }
+  }
+
+
+  let message = '';
+  if (snatcherIdx >= 0 && predatorIdx >= 0){
+    message = `Standing by ${players[predatorIdx].name} took the treasure from the Stealer, ${players[snatcherIdx].name}. ${players[predatorIdx].name} wins!`;
+  } else if (snatcherIdx >= 0){
+    message = `The Stealer, ${players[snatcherIdx].name}, snatched the treasure. ${players[snatcherIdx].name} wins!`;
+  } else {
+    message = `${players[finderIdx].name} found the Treasure and wins!`;
+  }
+
+  return { to: holderIdx, coins: baseCoins, intercepted, snatcherIdx, predatorIdx, message };
+}
+
+function __tc_applyReward(actorIdx, reward){
+  if (!reward) return;
+
+  if (reward.targetsShieldCheck && typeof reward.targetIndex === 'number'){
+    const t = players[reward.targetIndex];
+    if (t && t.shield){
+      openPopup('light', 'Shield', `${t.name}'s shield blocked the effect.`, {narrow:true, tintColor:t.color});
+      return;
+    }
+  }
+
+  let coinsToActor = reward.coinsToActor || 0;
+  let coinsToTarget = reward.coinsToTarget || 0;
+  const targetIndex = (typeof reward.targetIndex === 'number') ? reward.targetIndex : null;
+
+  if (coinsToActor > 0){
+    const actor = players[actorIdx];
+    const predatorIdx = actor?.predatorIndex;
+    const predator = (typeof predatorIdx === 'number') ? players[predatorIdx] : null;
+    if (actor && predator && predator.standbyArmed && !actor.shield){
+      awardCoins(predatorIdx, coinsToActor);
+      coinsToActor = 0;
+      openPopup('light', 'Predator Intercept', `${predator.name} intercepted the reward.`, {narrow:true, tintColor:predator.color});
+    }
+  }
+
+  if (coinsToActor !== 0) awardCoins(actorIdx, coinsToActor);
+
+  if (targetIndex!==null && coinsToTarget){
+    const t = players[targetIndex];
+    if (coinsToTarget < 0 && t && t.shield && reward.targetsShieldCheck){
+      openPopup('light', 'Shield', `${t.name}'s shield blocked the effect.`, {narrow:true, tintColor:t.color});
+    } else {
+      awardCoins(targetIndex, coinsToTarget);
+    }
+  }
+}
+
+async function __tc_usePower(actorIdx, roleKey, powerName){
+
+  // Round power blockers: if any blocker other than this actor exists, block power usage
+  if (roundPowerBlockers.size){
+    for (const b of roundPowerBlockers){ if (b !== actorIdx){ openPopup('light','Powers Blocked','Your power is blocked this round.',{narrow:true,tintColor:actor.color}); return; } }
+  }
+
+  const actor = players[actorIdx];
+  if (!actor) return;
+
+  actor.usedPowers = actor.usedPowers || new Set();
+  const keyOnce = `${roleKey}:${powerName}`;
+  if (actor.usedPowers.has(keyOnce)){
+    openPopup('light','Power',`You’ve already used <b>${powerName}</b> this round.`,{html:true,narrow:true,tintColor:actor.color});
+    return;
+  }
+
+  const cost = 2;
+  if ((actor.coins||0) < cost){
+    const have = actor.coins||0;
+    if(have>0) awardCoins(actorIdx, -have);
+    actor.blocked = true; actor.blockedRounds = (actor.blockedRounds||0) + 1; __autoUnblockIfFlag(actorIdx);
+    openPopup('light','Not enough coins — Turn Lost',`${actor.name} needed ${cost} coins. Remaining coins deducted. They’ll miss their next turn.`,{narrow:true,tintColor:actor.color});
+    return;
+  }
+  awardCoins(actorIdx, -cost);
+
+  const handlerKey = `${roleKey}:${powerName}`;
+  const handler = __tc_PowerHandlers[handlerKey] || __tc_PowerHandlers['default'];
+  const reward = await handler(actorIdx, {}, roleKey, powerName);
+
+  actor.usedPowers.add(keyOnce);
+  __tc_applyReward(actorIdx, reward);
+  notify(`${actor.name} used ${powerName}`);
+
+  if (selectedPlayer === actorIdx) {
+    setTimeout(()=>openPlayerPopup(actorIdx), 0);
+  }
+}
+
+/* ================= Player Popup ================= */
+function openPlayerPopup(idx){
+  selectedPlayer=idx;
+  const p=players[idx];
+  const role = p.roleKey ? Roles[p.roleKey] : null;
+
+  const imgTag = role?.img
+    ? `<img class="big-portrait" src="${role.img}" alt="${p.roleKey}">`
+    : `<div style="height:280px;border-radius:12px;border:2px dashed rgba(255,255,255,.25);display:grid;place-items:center">No Image</div>`;
+
+  const blurb = role?.blurb || "Character description.";
+
+  const powersHTML = role
+  ? `<table class="ppPowersTable">
+       <thead><tr><th>Power</th><th>Coin</th><th>Description</th></tr></thead>
+       <tbody>
+         ${role.powers.map((pow, i) => {
+            const costLabel = pow.costText || '2';
+            const used = (p.usedPowers && p.usedPowers.has(`${p.roleKey}:${pow.name}`));
+            return `
+              <tr>
+                <td><button class="btn small" id="ppUsePower_${i}" ${used?'disabled':''}><b>${pow.name}</b></button></td>
+                <td>${costLabel}</td>
+                <td>${pow.desc || ''}</td>
+              </tr>`;
+         }).join('')}
+       </tbody>
+     </table>`
+  : `<div style="opacity:.8;font-size:.9rem">No powers available.</div>`;
+
+  const html = `
+    <div class="two-col">
+      <div>${imgTag}</div>
+
+      <div style="display:grid;gap:10px;align-content:start">
+        <div class="coins-line" style="font-weight:800">🪙 Coins: <b id="ppCoins">${p.coins??0}</b></div>
+        <button class="btn small" id="ppGoTwice" ${((p.coins??0)<10||p.blocked)?'disabled':''}>Go twice</button>
+        <button class="btn small" id="ppBumper" ${(!(!p.blocked && !p.bumperUsed))?'disabled':''}>Bumpershot</button>
+        <button class="btn small ${p.standbyArmed?'standby-glow':''}" id="ppStandby" ${p.blocked?'disabled':''}>${p.standbyArmed?'Standby (on)':'Standby'}</button>
+        <button class="btn small ${p.shield?'shield-glow':''}" id="ppShield">${p.shield?'Shield (on)':'Shield'}</button>
+      </div>
+
+      <div class="char-blurb wide" style="--tint:${p.color || '#60a5fa'}">${blurb}</div>
+
+      <div class="wide" id="ppPowers" style="grid-column:1 / -1">
+        <div class="ppPowersWrap" style="--tint:${p.color || '#60a5fa'}">
+          ${powersHTML}
+        </div>
+      </div>
+    </div>
+  `;
+
+  openPopup('light', playerTitle(p), html, {html:true, narrow:true, tintColor:p.color, bigtitle:true});
+
+  setTimeout(()=>{
+    const go=document.getElementById('ppGoTwice');
+    const bum=document.getElementById('ppBumper');
+    const stb=document.getElementById('ppStandby');
+    if (stb && standbyDisabledForRound){ stb.setAttribute('disabled','disabled'); }
+    const sh =document.getElementById('ppShield');
+
+    if(go){
+      go.onclick=()=>{
+        const pl=players[selectedPlayer];
+        if(pl && (pl.coins||0)>=10 && !pl.blocked){
+          awardCoins(selectedPlayer, -10);
+          pl.extraTurns=(pl.extraTurns||0)+1;
+          updatePlayerPopupCoins();
+          openPopup('fortune','Go twice','10 coins spent — extra turn granted.',{narrow:true});
+        }
+      };
+    }
+    if(bum){
+      bum.onclick=()=>{
+        const pl=players[selectedPlayer];
+        if(pl && !pl.bumperUsed){
+          pl.bumperUsed = true;
+          // removed funny popup; just a subtle notify
+          notify(`${pl.name} used Bumpershot`);
+          setTimeout(()=>openPlayerPopup(selectedPlayer), 0);
+        }
+      };
+    }
+
+    if(stb){
+      stb.onclick=()=>{ if(standbyDisabledForRound){ openPopup('light','Curfew','Standby is disabled this round.',{narrow:true}); return;}
+        const pl=players[selectedPlayer];
+        if(pl && !pl.blocked){
+          pl.standbyArmed = !pl.standbyArmed;
+          pl.standbyExpireNextTurn = pl.standbyArmed; 
+          notify(`${pl.name} ${pl.standbyArmed?'enabled':'disabled'} Standby`);
+          renderPlayers(); // to auto-update ⏸️ badge when infoOn
+          setTimeout(()=>openPlayerPopup(selectedPlayer),0);
+        }
+      };
+    }
+    if(sh){
+      sh.onclick=()=>{
+        const pl=players[selectedPlayer];
+        pl.shield = !pl.shield;
+        pl.shieldExpireNextTurn = pl.shield; 
+        notify(`${pl.name} ${pl.shield?'enabled':'disabled'} Shield`);
+        renderPlayers(); // to auto-update 🛡️ badge when infoOn
+        setTimeout(()=>openPlayerPopup(selectedPlayer),0);
+      };
+    }
+
+    if(role){
+      role.powers.forEach((pow, i)=>{
+        const btn = document.getElementById(`ppUsePower_${i}`);
+        if(!btn) return;
+        btn.onclick = ()=>{
+          __tc_usePower(idx, p.roleKey, pow.name);
+        };
+      });
+    }
+
+    // Predator/Prey display (role names)
+    try {
+      const coinsLine = document.querySelector('.coins-line');
+      if (coinsLine) {
+        let div = document.getElementById('ppPredPrey');
+        if (!div) { div = document.createElement('div'); div.id = 'ppPredPrey'; coinsLine.insertAdjacentElement('afterend', div); }
+        const predatorChar = players[p.predatorIndex]?.roleKey || '—';
+        const preyChar     = players[p.preyIndex]?.roleKey || '—';
+        div.innerHTML = `Predator: ${predatorChar}<br>Prey: ${preyChar}`;
+      }
+    } catch(e) {}
+  },0);
+}
+
+function updatePlayerPopupCoins(){ const el=document.getElementById('ppCoins'); if(el) el.textContent = players[selectedPlayer]?.coins ?? 0; }
+
+/* ================= Keyboard shortcuts ================= */
+let keyBuf=''; let keyTimer=null;
+function flushKeyBuf(){const n=Number(keyBuf); keyBuf=''; if(!Number.isInteger(n)||n<1||n>TOTAL) return; const idx=n-1; const tile=board.children[idx]; if(tile && !tile.classList.contains('revealed')) tile.click();}
+addEventListener('keydown',(e)=>{
+  if(e.key>='0'&&e.key<='9'){
+    keyBuf+=e.key; if(keyBuf.length>2) keyBuf=e.key;
+    const val=Number(keyBuf);
+    if(val>=10 && val<=TOTAL){clearTimeout(keyTimer); flushKeyBuf();}
+    else if(val>=1 && val<=9){clearTimeout(keyTimer); keyTimer=setTimeout(flushKeyBuf,600);} 
+    else {keyBuf='';}
+  } else if(e.key==='Enter'){clearTimeout(keyTimer); flushKeyBuf();}
+  else if(e.key==='Escape'){keyBuf=''; clearTimeout(keyTimer);} 
+});
+
+/* ================= Setup players, roles, predator/prey ring ================= */
+function defaultColor(i){const palette=['#ef4444','#f59e0b','#10b981','#3b82f6','#a855f7','#ec4899','#14b8a6','#eab308']; return palette[i%palette.length];}
+const setupModal=document.getElementById('setupModal');
+const playerCount=document.getElementById('playerCount');
+const playersForm=document.getElementById('playersForm');
+const setupTiles=document.getElementById('setupTiles');
+const startingCoinsEl=document.getElementById('startingCoins');
+
+function buildPlayersForm(){
+  const existing=players.length;
+  const n=Math.max(1,Math.min(8,Number(playerCount.value || existing || 2)|| (existing||2)));
+  playersForm.innerHTML='';
+  for(let i=0;i<n;i++){
+    const existingName = players[i]?.name || '';
+    const existingColor = players[i]?.color || defaultColor(i);
+    const row=document.createElement('div'); row.className='setup-row';
+    row.innerHTML=`
+      <input type="text" placeholder="Player ${i+1} name" id="pname_${i}" value="${existingName}">
+      <input type="color" value="${existingColor}" id="pcolor_${i}">
+      <span style="opacity:.7">#${i+1}</span>`;
+    playersForm.appendChild(row);
+  }
+}
+
+document.getElementById('setupPlayers').onclick=()=>{ 
+  playerCount.value = players.length || playerCount.value || 2; 
+  setupTiles.value = TOTAL;
+  startingCoinsEl.value = STARTING_COINS;
+  setupModal.classList.add('open'); 
+  buildPlayersForm(); 
+};
+document.getElementById('cancelSetup').onclick=()=>setupModal.classList.remove('open');
+
+function assignUniqueRoles(targetPlayers){
+  const keys = Object.keys(Roles).slice();
+  shuffle(keys);
+  targetPlayers.forEach((p,i)=>{ p.roleKey = i < keys.length ? keys[i] : null; });
+}
+
+function wirePredatorPreyRing(){
+  const n = players.length;
+  for(let i=0;i<n;i++){
+    players[i].predatorIndex = (i+1)%n;
+    players[i].preyIndex     = (i-1+n)%n;
+  }
+}
+
+document.getElementById('savePlayers').onclick=()=>{
+  const n=Math.max(1,Math.min(8,Number(playerCount.value)|| (players.length||2))); 
+  const next=[];
+  STARTING_COINS = Math.max(0, Number(startingCoinsEl.value)||0);
+  const newTotal = Math.max(50, Math.min(100, Number(setupTiles.value)||TOTAL));
+  setTotal(newTotal);
+
+  for(let i=0;i<n;i++){
+    const name=(document.getElementById('pname_'+i)?.value||'').trim()||('Player '+(i+1));
+    const color=(document.getElementById('pcolor_'+i)?.value)||defaultColor(i);
+    const prev = players[i] || {};
+    next.push({
+      name,color,
+      coins: STARTING_COINS, /* start everyone at selected starting coins */
+      extraTurns: 0,
+      blocked: false,
+      blockedRounds: 0,
+      bumperUsed: false,
+      shield: false,
+      shieldExpireNextTurn: false,
+      standbyArmed: false,
+      standbyExpireNextTurn: false,
+      treasureSnatcherArmed: false,
+      treasureSnatcherExpireNextTurn: false,
+      usedPowers: new Set(),
+      roleKey: null,
+      predatorIndex: null,
+      preyIndex: null
+    });
+  }
+  players=next;
+
+  assignUniqueRoles(players);
+  wirePredatorPreyRing();
+
+  current=0; setupModal.classList.remove('open'); renderPlayers();
+
+  const inPlay = players.map(p=> p.roleKey).filter(Boolean);
+  const order = shuffle(inPlay.slice());
+  const seen = [];
+  order.forEach(k=>{ if(!seen.includes(k)) seen.push(k); });
+  const imgs = seen.map(k=>{
+    const r = Roles[k]; return r.img ? `<img class="reveal-portrait" src="${r.img}" alt="${k}">` : '';
+  }).join('');
+  openPopup('light','Characters in play', `<div class="reveal-wrap">${imgs}</div>`, {html:true, landscape:true, anim:'reveal', bigtitle:true});
+};
+
+playerCount.addEventListener('input', buildPlayersForm);
+
+/* ================= Reshuffle / New Round ================= */
+document.getElementById('reshuffleBehind').onclick=()=>{
+  buildBehind(); FunnyDeck.reset(); FortuneDeck.reset(); RiskyDeck.reset(); TrapDeck.reset(); EmptyDeck.reset();
+  usedClues.clear();
+
+  // reset points to STARTING_COINS and clear statuses
+  players.forEach(p=>{
+    p.coins = STARTING_COINS;
+    p.extraTurns = 0; p.blocked=false; p.blockedRounds=0; p.bumperUsed=false;
+    p.shield=false; p.shieldExpireNextTurn=false;
+    p.standbyArmed=false; p.standbyExpireNextTurn=false;
+    p.treasureSnatcherArmed=false; p.treasureSnatcherExpireNextTurn=false;
+    p.usedPowers = new Set();
+  });
+
+  // new characters on reshuffle
+  assignUniqueRoles(players);
+  turnDir = 1; wirePredatorPreyRing(); renderPlayers(); document.getElementById('hideAll').click();
+
+  backdropPath = randomBackdrop(); applyBackdrop();
+
+  const inPlay = players.map(p=> p.roleKey).filter(Boolean);
+  const order = shuffle(inPlay.slice()); const seen = [];
+  order.forEach(k=>{ if(!seen.includes(k)) seen.push(k); });
+  const imgs = seen.map(k=>{ const r = Roles[k]; return r.img ? `<img class="reveal-portrait" src="${r.img}" alt="${k}">` : ''; }).join('');
+  openPopup('light','Characters in play', `<div class="reveal-wrap">${imgs}</div>`, {html:true, landscape:true, anim:'reveal', bigtitle:true});
+
+  notify('Board reshuffled — coins reset and characters reassigned');
+};
+
+/* ================= Init ================= */
+(async function init(){
+  backdropPath = randomBackdrop();
+  buildBehind(); buildBoard();
+  try{
+    const list=await loadImageList();
+    if(Array.isArray(list)&&list.length){
+      const pool=list.slice(); shuffle(pool);
+      faceImages=pool.slice(0, Math.max(TOTAL, pool.length));
+      applyFaceImages();
+    }
+  }catch(e){}
+  applyBackdrop();
+
+  setupModal.classList.add('open');
+  if(players.length===0){
+    players=[
+      {name:'Player 1',color:'#ef4444',coins:0,extraTurns:0,blocked:false,blockedRounds:0,bumperUsed:false,shield:false,roleKey:null},
+      {name:'Player 2',color:'#3b82f6',coins:0,extraTurns:0,blocked:false,blockedRounds:0,bumperUsed:false,shield:false,roleKey:null}
+    ];
+  }
+  assignUniqueRoles(players);
+  wirePredatorPreyRing();
+  players.forEach(p=>{ p.usedPowers = new Set(); });
+  renderPlayers();
+  playerCount.value = players.length;
+  document.getElementById('setupTiles').value = TOTAL;
+  startingCoinsEl.value = STARTING_COINS;
+  buildPlayersForm();
+})();
+</script>
+</body>
+</html>
